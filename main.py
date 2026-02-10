@@ -34,7 +34,7 @@ class Publication:
         self._doiURL = doiURL
         self._pathToPDF = pathToPDF
     def generateCitation(self):
-        pass
+        return f"{self.getAuthorString()} ({self.getPublishDate()}) {self.getSourceTitle()}. {self.getPublisherString()}, {self.getDoiURL()}"
     #Getters
     def getAuthorString(self):
         return self._authorString
@@ -91,7 +91,7 @@ def insertionSort(publications):
     for index in range(1, len(publications)):
         currentValue = publications[index].getPublishDate()
         position = index
-        while position > 0 and (publications[position - 1].getPublishDate() > currentValue):
+        while position > 0 and (publications[position - 1].getPublishDate() < currentValue):
             publications[position].setPublishDate(publications[position - 1].getPublishDate())
             position -= 1
 
@@ -186,7 +186,7 @@ def loadPublications(conn, cursor):
             entry = Publication(row[0], row[1], row[2], row[3], row[4], row[5])
             publications.append(entry)
     except:
-        pass
+        print("Failed to perform database lookup!")
     return publications
 
 def insertPublications(conn, cursor, publications):
@@ -200,19 +200,29 @@ def dropPublications(conn, cursor):
     cursor.execute("DROP TABLE Publications;")
     conn.commit()
 
+def outputPublications(publications):
+    print("-----------------------")
+    for index, publication in enumerate(publications):
+        print(f"{index+1}. {publication.generateCitation()}")
+        print("-----------------------")
+
+
 
 def main():
     print("-----------------------")
     print("Academic Database")
-    print("1. View sorted database")
+    print("1. View database sorted by date published descending")
     print("2. Login as an Admin")
-    print("3. Search the database")
+    print("3. Search the database by date")
     print("4. Exit the program")
     print("-----------------------")
     choice = input("\n#")
     match choice:
         case '1':
             print("Sorted database")
+            publications = loadPublications(conn, cursor)
+            publications = insertionSort(publications)
+            outputPublications(publications)
             main()
         case '2':
             username = input("What is your username?: ")
@@ -237,6 +247,7 @@ def main():
 conn, cursor = connectDB('database.db')
 makeTables(conn, cursor)
 #publications = loadPublications(conn, cursor)
+#print(publications)
 #publications = insertionSort(publications)
 #dropPublications(conn, cursor)
 #insertPublications(conn, cursor, publications)
