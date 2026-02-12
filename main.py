@@ -39,7 +39,7 @@ class Publication:
     def getAuthorString(self):
         return self._authorString
     def getPublishDate(self):
-        return self._publishDate
+        return int(self._publishDate)
     def getSourceTitle(self):
         return self._sourceTitle
     def getPublisherString(self):
@@ -97,6 +97,22 @@ def insertionSort(publications):
 
         publications[position].setPublishDate(currentValue)
     return publications
+
+
+def binarySearch(publications, query):
+    found = False
+    middle = -1
+    start = 0
+    end = len(publications)-1
+    while (found == False) and (start > end):
+        middle = ((start+end) // 2)
+        if publications[middle].getPublishDate() == query:
+            found = True
+        elif publications[middle].getPublishDate() < query:
+            start = middle + 1
+        else:
+            end = middle -1
+    return found, middle
 
 
 def validateCredentials(username, password, conn, cursor):
@@ -206,6 +222,36 @@ def outputPublications(publications):
         print(f"{index+1}. {publication.generateCitation()}")
         print("-----------------------")
 
+def databaseSearch():
+    print("-----------------------")
+    print("Which column would you like to search the database by?")
+    print("1. authorString")
+    print("2. publishYear (Fast search!)")
+    print("3. sourceTitle")
+    print("4. Publisher")
+    print("5. DOI URL")
+    choice = input("\n#")
+    print("Please enter your search term.")
+    query = input("\n#")
+    match choice:
+        case '1':
+            pass 
+        case '2':
+            try:
+                query = int(query)
+            except:
+                print("Invalid search term!")
+                databaseSearch()
+            found = True
+            publications = loadPublications(conn, cursor)
+            results = []
+            while found == True:
+                found, resulti = binarySearch(publications, query)
+                if found == True:
+                    results.append(publications[resulti])
+                    publications.pop(resulti)
+            outputPublications(results)            
+
 
 
 def main():
@@ -213,7 +259,7 @@ def main():
     print("Academic Database")
     print("1. View database sorted by date published descending")
     print("2. Login as an Admin")
-    print("3. Search the database by date")
+    print("3. Search the database")
     print("4. Exit the program")
     print("-----------------------")
     choice = input("\n#")
@@ -234,7 +280,7 @@ def main():
                 print("Incorrect credentials!")
             main()
         case '3':
-            print("Database search")
+            databaseSearch()
             main()
         case '4':
             print("Quitting...")
