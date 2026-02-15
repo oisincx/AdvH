@@ -1,5 +1,5 @@
-import sqlite3
-
+import sqlite3, hashlib, os
+passwordSalt = '5lo'
 
 def connectDB(database):
     try:
@@ -12,7 +12,7 @@ def connectDB(database):
 
 def makeTables(conn, cursor):
     queries = [
-        "CREATE TABLE IF NOT EXISTS Publications(authorString VARCHAR(255) NOT NULL, publishDate YEAR NOT NULL, sourceTitle VARCHAR(255) NOT NULL, publisherString VARCHAR(100) NOT NULL, doiURL VARCHAR(70) NOT NULL PRIMARY KEY, pathToPDF VARCHAR(255));",
+        "CREATE TABLE IF NOT EXISTS Publications(authorString VARCHAR(255) NOT NULL, publishDate YEAR NOT NULL, sourceTitle VARCHAR(255) NOT NULL, journalString VARCHAR(100) NOT NULL, doiURL VARCHAR(70) NOT NULL PRIMARY KEY, pathToPDF VARCHAR(255));",
         "CREATE TABLE IF NOT EXISTS Administrators(username VARCHAR(255) NOT NULL PRIMARY KEY, password VARCHAR(255) NOT NULL);"
         ]
     for query in queries:
@@ -26,15 +26,15 @@ def makeTables(conn, cursor):
 
 
 class Publication:
-    def __init__(self, authorString, publishDate, sourceTitle, publisherString, doiURL, pathToPDF):
+    def __init__(self, authorString, publishDate, sourceTitle, journalString, doiURL, pathToPDF):
         self._authorString = authorString
         self._publishDate = publishDate
         self._sourceTitle = sourceTitle
-        self._publisherString = publisherString
+        self._journalString = journalString
         self._doiURL = doiURL
         self._pathToPDF = pathToPDF
     def generateCitation(self):
-        return f"{self.getAuthorString()} ({self.getPublishDate()}) {self.getSourceTitle()}. {self.getPublisherString()}, {self.getDoiURL()}"
+        return f"{self.getAuthorString()} ({self.getPublishDate()}) {self.getSourceTitle()}. {self.getJournalString()}, {self.getDoiURL()}"
     #Getters
     def getAuthorString(self):
         return self._authorString
@@ -42,8 +42,8 @@ class Publication:
         return int(self._publishDate)
     def getSourceTitle(self):
         return self._sourceTitle
-    def getPublisherString(self):
-        return self._publisherString
+    def getJournalString(self):
+        return self._journalString
     def getDoiURL(self):
         return self._doiURL
     def getPathToPDF(self):
@@ -80,35 +80,38 @@ class Administrator:
 
 def createAdmin(conn, cursor, admin):
     try:
-        cursor.execute(f"INSERT INTO Administrators VALUES ('{admin.getUsername()}', '{admin.getPassword()}');")
+        cursor.execute(f"INSERT INTO Administrators VALUES ('{admin.getUsername()}', '{hashlib.sha256((admin.getPassword() + passwordSalt).encode()).hexdigest()}');")
         conn.commit()
-    except:
-        print("Database query failed!")
+    except Exception as e:
+        print("Database query failed!", e)
         return False
     return True
 
-def insertionSort(publications):
+def dateInsertionSort(publications): # Descending order
     for index in range(1, len(publications)):
-        currentValue = publications[index].getPublishDate()
+        current = publications[index]
         position = index
-        while position > 0 and (publications[position - 1].getPublishDate() < currentValue):
-            publications[position].setPublishDate(publications[position - 1].getPublishDate())
+
+        while position > 0 and publications[position - 1].getPublishDate() < current.getPublishDate():
+            publications[position] = publications[position - 1]
             position -= 1
 
-        publications[position].setPublishDate(currentValue)
+        publications[position] = current
+
     return publications
 
 
-def binarySearch(publications, query):
+
+def binarySearch(publications, query): # Descending order
     found = False
     middle = -1
     start = 0
     end = len(publications)-1
-    while (found == False) and (start > end):
+    while (found == False) and (start <= end):
         middle = ((start+end) // 2)
         if publications[middle].getPublishDate() == query:
             found = True
-        elif publications[middle].getPublishDate() < query:
+        elif publications[middle].getPublishDate() > query:
             start = middle + 1
         else:
             end = middle -1
@@ -117,11 +120,23 @@ def binarySearch(publications, query):
 
 def validateCredentials(username, password, conn, cursor):
     try:
-        cursor.execute(f"SELECT * FROM Administrators WHERE username = '{username}' AND password = '{password}';")
+        cursor.execute(f"SELECT * FROM Administrators WHERE username = '{username}' AND password = '{hashlib.sha256((password + passwordSalt).encode()).hexdigest()}';")
         return not (len(cursor.fetchall()) == 0)
     except:
         print("Database lookup failed!")
         return False
+
+def newAdminOnboard(conn, cursor):
+    print("-----------------------")
+    print("Administrator Management")
+    username = input("What will the new admin's username be?: ")
+    password = input("What will the new admin's password be?: ")
+    admin = Administrator(username, password)
+    if createAdmin(conn, cursor, admin):
+        print(f"Succesfully created admin with username {username}!")
+    else:
+        print("Failed to create admin!")
+
 def adminPanel(admin):
     print(f"Hello, {admin.getUsername()}")
     print("-----------------------")
@@ -140,15 +155,7 @@ def adminPanel(admin):
             print("Deleting publication")
             adminPanel(admin)
         case '3':
-            print("-----------------------")
-            print("Administrator Management")
-            username = input("What will the new admin's username be?: ")
-            password = input("What will the new admin's password be?: ")
-            admin = Administrator(username, password)
-            if createAdmin(conn, cursor, admin):
-                print(f"Succesfully created admin with username {username}!")
-            else:
-                print("Failed to create admin!")
+            newAdminOnboard()
             adminPanel(admin)
         case '4':
             print("Exiting admin panel..")
@@ -156,36 +163,18 @@ def adminPanel(admin):
             print("Invalid input!")
             adminPanel(admin)
 
-def loadData(path, conn, cursor):
-    f = open(path, 'r')
+
+def loadData(path, conn, cursor): # This is just a helper function to help load in mock data for testing
+    f = open(path, 'r', encoding='utf-8')
     data = f.readlines()
-    data.pop(0)
+    data.pop(0) # pop the definition line because my parser assumes a specific order
     for row in data:
         row = row.rstrip('\n')
         columns = row.split('|')
         values = ""
         for column in columns:
             values += f'"{column}"' + ','
-        values = values[:-1]
-        query = f"INSERT INTO Publications VALUES ({values});"
-        
-        print(query)
-        cursor.execute(query)
-        conn.commit()
-    f.close()
-
-
-def loadData(path, conn, cursor):
-    f = open(path, 'r')
-    data = f.readlines()
-    data.pop(0)
-    for row in data:
-        row = row.rstrip('\n')
-        columns = row.split('|')
-        values = ""
-        for column in columns:
-            values += f'"{column}"' + ','
-        values = values[:-1]
+        values = values[:-1] # pop that last comma
         query = f"INSERT INTO Publications VALUES ({values});"
         
         print(query)
@@ -207,20 +196,29 @@ def loadPublications(conn, cursor):
 
 def insertPublications(conn, cursor, publications):
     for publication in publications:
-        values = f"{publication.getAuthorString()}, {publication.getPublishDate()}, {publication.getSourceTitle()}, {publication.getSourceTitle()}, {publication.getPublisherString()}, {publication.getDoiURL()}, {publication.getPathToPDF()}"
+        values = f'"{publication.getAuthorString()}", "{publication.getPublishDate()}", "{publication.getSourceTitle()}", "{publication.getJournalString()}", "{publication.getDoiURL()}", "{publication.getPathToPDF()}"'
         query = f"INSERT INTO Publications VALUES ({values});"
-        print(query)
         cursor.execute(query)
         conn.commit()
+
 def dropPublications(conn, cursor):
     cursor.execute("DROP TABLE Publications;")
     conn.commit()
 
 def outputPublications(publications):
     print("-----------------------")
-    for index, publication in enumerate(publications):
+    for index, publication in enumerate(publications): # Fancy python for each loop that lets me keep an index
         print(f"{index+1}. {publication.generateCitation()}")
         print("-----------------------")
+
+def sortDatabase(conn, cursor):
+    publications = loadPublications(conn, cursor)
+    publications = dateInsertionSort(publications)
+    print("DO NOT TERMINATE PROGRAM")
+    # Gets a bit dangerous here as the only copy of the database is in memory
+    dropPublications(conn, cursor)
+    makeTables(conn, cursor)
+    insertPublications(conn, cursor, publications)
 
 def databaseSearch():
     print("-----------------------")
@@ -242,15 +240,19 @@ def databaseSearch():
             except:
                 print("Invalid search term!")
                 databaseSearch()
-            found = True
+            sortDatabase(conn, cursor) # Make sure the database is sorted first.
             publications = loadPublications(conn, cursor)
             results = []
-            while found == True:
-                found, resulti = binarySearch(publications, query)
+            found, resulti = binarySearch(publications, query)
+            while found:
                 if found == True:
                     results.append(publications[resulti])
                     publications.pop(resulti)
-            outputPublications(results)            
+                found, resulti = binarySearch(publications, query)
+            if (len(results) > 0):
+                outputPublications(results)
+            else:
+                print("No publications matching that year were found!")
 
 
 
@@ -267,7 +269,7 @@ def main():
         case '1':
             print("Sorted database")
             publications = loadPublications(conn, cursor)
-            publications = insertionSort(publications)
+            publications = dateInsertionSort(publications)
             outputPublications(publications)
             main()
         case '2':
@@ -290,12 +292,21 @@ def main():
             main()
 
 
-conn, cursor = connectDB('database.db')
+database = 'database.db'
+if not (os.path.exists(database)):
+    firstRun = True
+else:
+    firstRun = False
+value = connectDB(database)
+if not (value == False):
+    conn, cursor = value
+else:
+    print("Failed to connect to the database!")
+    quit()
 makeTables(conn, cursor)
-#publications = loadPublications(conn, cursor)
-#print(publications)
-#publications = insertionSort(publications)
-#dropPublications(conn, cursor)
-#insertPublications(conn, cursor, publications)
+if firstRun:
+    print("It appears this is your first time running the program, Please make an Administrator account!")
+    newAdminOnboard(conn, cursor)
+sortDatabase(conn, cursor)
 #loadData('exampledata.txt', conn, cursor)
 main()
