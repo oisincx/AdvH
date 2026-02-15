@@ -13,7 +13,7 @@ def connectDB(database):
 def makeTables(conn, cursor):
     queries = [
         "CREATE TABLE IF NOT EXISTS Publications(authorString VARCHAR(255) NOT NULL, publishDate YEAR NOT NULL, sourceTitle VARCHAR(255) NOT NULL, journalString VARCHAR(100) NOT NULL, doiURL VARCHAR(70) NOT NULL PRIMARY KEY, pathToPDF VARCHAR(255));",
-        "CREATE TABLE IF NOT EXISTS Administrators(username VARCHAR(255) NOT NULL PRIMARY KEY, password VARCHAR(255) NOT NULL);"
+        "CREATE TABLE IF NOT EXISTS Administrators(username VARCHAR(255) NOT NULL PRIMARY KEY, password VARCHAR(64) NOT NULL);"
         ]
     for query in queries:
         try:
@@ -120,7 +120,7 @@ def binarySearch(publications, query): # Descending order
 
 def validateCredentials(username, password, conn, cursor):
     try:
-        cursor.execute(f"SELECT * FROM Administrators WHERE username = '{username}' AND password = '{hashlib.sha256((password + passwordSalt).encode()).hexdigest()}';")
+        cursor.execute(f"SELECT * FROM Administrators WHERE username = '{username}' COLLATE NOCASE AND password = '{hashlib.sha256((password + passwordSalt).encode()).hexdigest()}';")
         return not (len(cursor.fetchall()) == 0)
     except:
         print("Database lookup failed!")
@@ -167,7 +167,7 @@ def adminPanel(admin):
 def loadData(path, conn, cursor): # This is just a helper function to help load in mock data for testing
     f = open(path, 'r', encoding='utf-8')
     data = f.readlines()
-    data.pop(0) # pop the definition line because my parser assumes a specific order
+    #data.pop(0) # pop the definition line because my parser assumes a specific order
     for row in data:
         row = row.rstrip('\n')
         columns = row.split('|')
@@ -182,11 +182,11 @@ def loadData(path, conn, cursor): # This is just a helper function to help load 
         conn.commit()
     f.close()
 
-def loadPublications(conn, cursor):
+def loadPublications(conn, cursor, query):
+    publications = []
     try:
-        cursor.execute("SELECT * FROM Publications;")
+        cursor.execute(query)
         data = cursor.fetchall()
-        publications = []
         for row in data:
             entry = Publication(row[0], row[1], row[2], row[3], row[4], row[5])
             publications.append(entry)
@@ -212,7 +212,7 @@ def outputPublications(publications):
         print("-----------------------")
 
 def sortDatabase(conn, cursor):
-    publications = loadPublications(conn, cursor)
+    publications = loadPublications(conn, cursor, "SELECT * FROM Publications;")
     publications = dateInsertionSort(publications)
     print("DO NOT TERMINATE PROGRAM")
     # Gets a bit dangerous here as the only copy of the database is in memory
@@ -224,24 +224,24 @@ def databaseSearch():
     print("-----------------------")
     print("Which column would you like to search the database by?")
     print("1. authorString")
-    print("2. publishYear (Fast search!)")
+    print("2. publishYear (Fast Search!)")
     print("3. sourceTitle")
-    print("4. Publisher")
+    print("4. Journal")
     print("5. DOI URL")
     choice = input("\n#")
     print("Please enter your search term.")
     query = input("\n#")
+    column = ""
     match choice:
         case '1':
-            pass 
+            column = 'authorString'
         case '2':
             try:
                 query = int(query)
             except:
                 print("Invalid search term!")
                 databaseSearch()
-            sortDatabase(conn, cursor) # Make sure the database is sorted first.
-            publications = loadPublications(conn, cursor)
+            publications = loadPublications(conn, cursor, "SELECT * FROM Publications;")
             results = []
             found, resulti = binarySearch(publications, query)
             while found:
@@ -253,8 +253,19 @@ def databaseSearch():
                 outputPublications(results)
             else:
                 print("No publications matching that year were found!")
-
-
+            return
+        case '3':
+            column = 'sourceTitle' 
+        case '4':
+            column = 'journalString'
+        case '5':
+            column = 'doiURL'
+    sql = f'SELECT * FROM Publications WHERE {column} = "{query}" COLLATE NOCASE;'
+    results = loadPublications(conn, cursor, sql)
+    if len(results) > 0:
+        outputPublications(results)
+    else:
+        print("No publications matchin your query were found!")
 
 def main():
     print("-----------------------")
@@ -268,8 +279,7 @@ def main():
     match choice:
         case '1':
             print("Sorted database")
-            publications = loadPublications(conn, cursor)
-            publications = dateInsertionSort(publications)
+            publications = loadPublications(conn, cursor, "SELECT * FROM Publications;")
             outputPublications(publications)
             main()
         case '2':
@@ -293,10 +303,7 @@ def main():
 
 
 database = 'database.db'
-if not (os.path.exists(database)):
-    firstRun = True
-else:
-    firstRun = False
+firstRun = not (os.path.exists(database))
 value = connectDB(database)
 if not (value == False):
     conn, cursor = value
@@ -307,6 +314,6 @@ makeTables(conn, cursor)
 if firstRun:
     print("It appears this is your first time running the program, Please make an Administrator account!")
     newAdminOnboard(conn, cursor)
+#loadData('2025.csv', conn, cursor)
 sortDatabase(conn, cursor)
-#loadData('exampledata.txt', conn, cursor)
 main()
