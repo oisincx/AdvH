@@ -1,5 +1,5 @@
 import sqlite3, hashlib, os
-passwordSalt = '5lo'
+passwordSalt = '5lo' # Arbritary but hopefully vaguely unqiue! Means pre computed hases are kaput
 
 def connectDB(database):
     try:
@@ -152,7 +152,19 @@ def adminPanel(admin):
             print("Adding publication")
             adminPanel(admin)
         case '2':
-            print("Deleting publication")
+            print("Please enter the full DOI URL of the publication you want to delete.")
+            doi = input("\n#")
+            sql = f"DELETE FROM Publications WHERE doiURL = '{doi}';"
+            try:
+                cursor.execute(sql)
+            except:
+                print("Failed to execute query!")
+                adminPanel(admin)
+            if cursor.rowcount > 0:
+                print(f"Deleted {str(cursor.rowcount)} publications according to this query, if > 1 then duplicate entries existed.")
+            else:
+                print("No publications matching that DOI were found!")
+            conn.commit()
             adminPanel(admin)
         case '3':
             newAdminOnboard()
