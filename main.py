@@ -78,9 +78,12 @@ class Administrator:
         self._password = password
 
 
+def hash(password, salt):
+    return hashlib.sha256((password + salt).encode()).hexdigest()
+
 def createAdmin(conn, cursor, admin):
     try:
-        cursor.execute(f"INSERT INTO Administrators VALUES ('{admin.getUsername()}', '{hashlib.sha256((admin.getPassword() + passwordSalt).encode()).hexdigest()}');")
+        cursor.execute(f"INSERT INTO Administrators VALUES ( '{admin.getUsername()}' , '{ hash(admin.getPassword(), passwordSalt) }');")
         conn.commit()
     except Exception as e:
         print("Database query failed!", e)
@@ -120,7 +123,7 @@ def binarySearch(publications, query): # Descending order
 
 def validateCredentials(username, password, conn, cursor):
     try:
-        cursor.execute(f"SELECT * FROM Administrators WHERE username = '{username}' COLLATE NOCASE AND password = '{hashlib.sha256((password + passwordSalt).encode()).hexdigest()}';")
+        cursor.execute(f"SELECT * FROM Administrators WHERE username = '{username}' COLLATE NOCASE AND password = '{hash(password, passwordSalt)}';")
         return not (len(cursor.fetchall()) == 0)
     except:
         print("Database lookup failed!")
@@ -167,7 +170,7 @@ def adminPanel(admin):
             conn.commit()
             adminPanel(admin)
         case '3':
-            newAdminOnboard()
+            newAdminOnboard(conn, cursor)
             adminPanel(admin)
         case '4':
             print("Exiting admin panel..")
