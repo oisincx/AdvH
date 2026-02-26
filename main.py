@@ -158,7 +158,6 @@ def insertPublication(conn, cursor, publication):
     query = f"INSERT INTO Publications VALUES ({values});"
     cursor.execute(query)
     conn.commit()
-    sortDatabase(conn, cursor)
 
 def adminPanel(admin):
     print(f"Hello, {admin.getUsername()}")
@@ -255,6 +254,7 @@ def sortDatabase(conn, cursor):
     insertPublications(conn, cursor, publications)
 
 def databaseSearch():
+    sortDatabase(conn, cursor)
     print("-----------------------")
     print("Which column would you like to search the database by?")
     print("1. authorString")
@@ -312,6 +312,7 @@ def main():
     choice = input("\n#")
     match choice:
         case '1':
+            sortDatabase(conn, cursor)
             print("Sorted database")
             publications = loadPublications(conn, cursor, "SELECT * FROM Publications;")
             outputPublications(publications)
