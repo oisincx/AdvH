@@ -140,6 +140,26 @@ def newAdminOnboard(conn, cursor):
     else:
         print("Failed to create admin!")
 
+
+def publicationWizard(): # Ideally this should be able to parse pre made APA citations but like whatevs
+    print("-----------------------") 
+    print("Publication Wizard!")
+    authorString = input("Please enter the APA formatted author list: ")
+    publishDate = input("Please enter the year this publication was published: ")
+    sourceTitle = input("Please enter the title of the publication: ")
+    journalString = input("Please enter the name of the Journal: ")
+    doiURL = input("Please enter the DOI of the publication, including https:// : ")
+    PDF = input("Please enter the path to the PDF relative to the current working directory: ")
+    publication = Publication(authorString, publishDate, sourceTitle, journalString, doiURL, PDF)
+    return publication
+
+def insertPublication(conn, cursor, publication):
+    values = f'"{publication.getAuthorString()}", "{publication.getPublishDate()}", "{publication.getSourceTitle()}", "{publication.getJournalString()}", "{publication.getDoiURL()}", "{publication.getPathToPDF()}"'
+    query = f"INSERT INTO Publications VALUES ({values});"
+    cursor.execute(query)
+    conn.commit()
+    sortDatabase(conn, cursor)
+
 def adminPanel(admin):
     print(f"Hello, {admin.getUsername()}")
     print("-----------------------")
@@ -153,6 +173,8 @@ def adminPanel(admin):
     match choice:
         case '1':
             print("Adding publication")
+            pub = publicationWizard()
+            insertPublication(conn,cursor,pub)
             adminPanel(admin)
         case '2':
             print("Please enter the full DOI URL of the publication you want to delete.")
@@ -211,10 +233,7 @@ def loadPublications(conn, cursor, query):
 
 def insertPublications(conn, cursor, publications):
     for publication in publications:
-        values = f'"{publication.getAuthorString()}", "{publication.getPublishDate()}", "{publication.getSourceTitle()}", "{publication.getJournalString()}", "{publication.getDoiURL()}", "{publication.getPathToPDF()}"'
-        query = f"INSERT INTO Publications VALUES ({values});"
-        cursor.execute(query)
-        conn.commit()
+        insertPublication(conn, cursor, publication)
 
 def dropPublications(conn, cursor):
     cursor.execute("DROP TABLE Publications;")
