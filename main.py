@@ -294,6 +294,9 @@ def databaseSearch():
             column = 'journalString'
         case '5':
             column = 'doiURL'
+        case _:
+            print("Please enter a valid column!")
+            databaseSearch()
     sql = f'SELECT * FROM Publications WHERE {column} = "{query}" COLLATE NOCASE;'
     results = loadPublications(conn, cursor, sql)
     if len(results) > 0:
