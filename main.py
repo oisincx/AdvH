@@ -10,6 +10,7 @@ def connectDB(database):
         print("Failed to connect to the database!")
         return False
 
+
 def makeTables(conn, cursor):
     queries = [
         "CREATE TABLE IF NOT EXISTS Publications(authorString VARCHAR(255) NOT NULL, publishDate YEAR NOT NULL, sourceTitle VARCHAR(255) NOT NULL, journalString VARCHAR(100) NOT NULL, doiURL VARCHAR(70) NOT NULL PRIMARY KEY, pathToPDF VARCHAR(255));",
@@ -22,7 +23,6 @@ def makeTables(conn, cursor):
             print("Failed to create tables")
             quit()
     conn.commit()
-
 
 
 class Publication:
@@ -51,7 +51,6 @@ class Publication:
     #Setters
     def setAuthorString(self, authorString):
         self._authorString = authorString
-        return True
     def setPublishDate(self, publishDate):
         self._publishDate = publishDate
     def setSourceTitle(self, sourceTitle):
@@ -81,6 +80,7 @@ class Administrator:
 def hash(password, salt):
     return hashlib.sha256((password + salt).encode()).hexdigest()
 
+
 def createAdmin(conn, cursor, admin):
     try:
         cursor.execute(f"INSERT INTO Administrators VALUES ( '{admin.getUsername()}' , '{ hash(admin.getPassword(), passwordSalt) }');")
@@ -89,6 +89,7 @@ def createAdmin(conn, cursor, admin):
         print("Database query failed!", e)
         return False
     return True
+
 
 def dateInsertionSort(publications): # Descending order
     for index in range(1, len(publications)):
@@ -129,6 +130,7 @@ def validateCredentials(username, password, conn, cursor):
         print("Database lookup failed!")
         return False
 
+
 def newAdminOnboard(conn, cursor):
     print("-----------------------")
     print("Administrator Management")
@@ -148,16 +150,51 @@ def publicationWizard(): # Ideally this should be able to parse pre made APA cit
     publishDate = input("Please enter the year this publication was published: ")
     sourceTitle = input("Please enter the title of the publication: ")
     journalString = input("Please enter the name of the Journal: ")
-    doiURL = input("Please enter the DOI of the publication, including https:// : ")
+    while True:
+        try:
+            doiURL = input("Please enter the DOI of the publication, including https:// : ")
+            doiURL = doiURL.lower()
+            if not (doiURL.startswith("https://")) or len(doiURL) > 70:
+                raise ValueError
+            break
+        except ValueError:
+            print("DOI must start with 'https://'")
     PDF = input("Please enter the path to the PDF relative to the current working directory: ")
     publication = Publication(authorString, publishDate, sourceTitle, journalString, doiURL, PDF)
     return publication
+
 
 def insertPublication(conn, cursor, publication):
     values = f'"{publication.getAuthorString()}", "{publication.getPublishDate()}", "{publication.getSourceTitle()}", "{publication.getJournalString()}", "{publication.getDoiURL()}", "{publication.getPathToPDF()}"'
     query = f"INSERT INTO Publications VALUES ({values});"
     cursor.execute(query)
     conn.commit()
+
+
+def deletePublicationWizard():
+    print("Please enter the full DOI URL of the publication you want to delete.")
+    while True:
+        try:
+            doi = input("\n#")
+            doi = doi.lower()
+            if not (doi.startswith("https://")) or len(doi) > 70:
+                raise ValueError
+            break
+        except ValueError:
+            print("DOI must start with 'https://' and be less than or equal to 70 characters.")
+    return doi
+
+
+def deletePublication(conn, cursor, doi):
+    sql = f"DELETE FROM Publications WHERE doiURL = '{doi}';"
+    try:
+        cursor.execute(sql)
+    except:
+        print("Failed to execute query!")
+        return False
+    conn.commit()
+    return cursor.rowcount
+
 
 def adminPanel(admin):
     print(f"Hello, {admin.getUsername()}")
@@ -176,19 +213,12 @@ def adminPanel(admin):
             insertPublication(conn,cursor,pub)
             adminPanel(admin)
         case '2':
-            print("Please enter the full DOI URL of the publication you want to delete.")
-            doi = input("\n#")
-            sql = f"DELETE FROM Publications WHERE doiURL = '{doi}';"
-            try:
-                cursor.execute(sql)
-            except:
-                print("Failed to execute query!")
-                adminPanel(admin)
-            if cursor.rowcount > 0:
+            doi = deletePublicationWizard()
+            result = deletePublication(conn, cursor, doi)
+            if result > 0:
                 print(f"Deleted {str(cursor.rowcount)} publications according to this query, if > 1 then duplicate entries existed.")
             else:
                 print("No publications matching that DOI were found!")
-            conn.commit()
             adminPanel(admin)
         case '3':
             newAdminOnboard(conn, cursor)
@@ -217,6 +247,7 @@ def loadData(path, conn, cursor): # This is just a helper function to help load 
         cursor.execute(query)
         conn.commit()
     f.close()
+
 
 def loadPublications(conn, cursor, query):
     publications = []
@@ -253,8 +284,28 @@ def sortDatabase(conn, cursor):
     makeTables(conn, cursor)
     insertPublications(conn, cursor, publications)
 
-def databaseSearch():
-    sortDatabase(conn, cursor)
+
+def searchDatabase(column, query):
+    if column == 'publishYear': # Therefore with binary search
+        sortDatabase(conn, cursor) # Makes sure the database is sorted before doing binary search
+        print("Binary search started")
+        publications = loadPublications(conn, cursor, "SELECT * FROM Publications;")
+        results = []
+        found, resulti = binarySearch(publications, query)
+        while found:
+            if found == True:
+                results.append(publications[resulti])
+                publications.pop(resulti)
+            found, resulti = binarySearch(publications, query)
+        if len(results) <= 0: return False
+        else: return results
+    sql = f'SELECT * FROM Publications WHERE {column} = "{query}" COLLATE NOCASE;'
+    results = loadPublications(conn, cursor, sql)
+    if len(results) <= 0: return False
+    else: return results
+
+
+def databaseSearchWizard():
     print("-----------------------")
     print("Which column would you like to search the database by?")
     print("1. authorString")
@@ -264,45 +315,37 @@ def databaseSearch():
     print("5. DOI URL")
     choice = input("\n#")
     print("Please enter your search term.")
-    query = input("\n#")
     column = ""
     match choice:
         case '1':
             column = 'authorString'
+            query = input("\n#")
         case '2':
-            try:
-                query = int(query)
-            except:
-                print("Invalid search term!")
-                databaseSearch()
-            publications = loadPublications(conn, cursor, "SELECT * FROM Publications;")
-            results = []
-            found, resulti = binarySearch(publications, query)
-            while found:
-                if found == True:
-                    results.append(publications[resulti])
-                    publications.pop(resulti)
-                found, resulti = binarySearch(publications, query)
-            if (len(results) > 0):
-                outputPublications(results)
-            else:
-                print("No publications matching that year were found!")
-            return
+            column = 'publishYear'
+            while True:
+                try:
+                    query = int(input("\n#"))
+                    break
+                except ValueError:
+                    print("Input must be an integer!")
         case '3':
-            column = 'sourceTitle' 
+            column = 'sourceTitle'
+            query = input("\n#") 
         case '4':
             column = 'journalString'
+            query = input("\n#")
         case '5':
             column = 'doiURL'
+            query = input("\n#")
         case _:
             print("Please enter a valid column!")
-            databaseSearch()
-    sql = f'SELECT * FROM Publications WHERE {column} = "{query}" COLLATE NOCASE;'
-    results = loadPublications(conn, cursor, sql)
-    if len(results) > 0:
+            databaseSearchWizard()
+    results = searchDatabase(column, query)
+    if results:
         outputPublications(results)
     else:
-        print("No publications matchin your query were found!")
+        print("No publications matching your query were found!")
+
 
 def main():
     print("-----------------------")
@@ -330,7 +373,7 @@ def main():
                 print("Incorrect credentials!")
             main()
         case '3':
-            databaseSearch()
+            databaseSearchWizard()
             main()
         case '4':
             print("Quitting...")
@@ -339,7 +382,7 @@ def main():
             print("Invalid input!")
             main()
 
-
+# Kick everything off!
 database = 'database.db'
 firstRun = not (os.path.exists(database))
 value = connectDB(database)
