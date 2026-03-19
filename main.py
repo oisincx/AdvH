@@ -162,7 +162,6 @@ def validateInput(dataType, value):
             return value
 
         case 'pdf':
-            value = value.lower()
             if len(value) > 255 or len(value) <= 0:
                 raise ValueError("PDF Path cannot be longer than 255 characters or empty!")
             return value
