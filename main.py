@@ -287,14 +287,23 @@ def loadData(path, conn, cursor): # This is just a helper function to help load 
     f.close()
 
 
-def loadPublications(conn, cursor, query):
+def parseDatabaseRow(row):
+    return Publication(row[0], row[1], row[2], row[3], row[4], row[5])
+
+
+def parseDatabaseRows(data):
+    publications = []
+    for row in data:
+        entry = parseDatabaseRow(row)
+        publications.append(entry)
+    return publications
+
+def loadPublications(conn, cursor):
     publications = []
     try:
-        cursor.execute(query)
+        cursor.execute("SELECT * FROM Publications;")
         data = cursor.fetchall()
-        for row in data:
-            entry = Publication(row[0], row[1], row[2], row[3], row[4], row[5])
-            publications.append(entry)
+        publications = parseDatabaseRows(data)
     except:
         print("Failed to perform database lookup!")
     return publications
@@ -318,7 +327,7 @@ def outputPublications(publications):
 
 
 def sortDatabase(conn, cursor):
-    publications = loadPublications(conn, cursor, "SELECT * FROM Publications;")
+    publications = loadPublications(conn, cursor)
     publications = dateInsertionSort(publications)
     print("DO NOT TERMINATE PROGRAM")
     # Gets a bit dangerous here as the only copy of the database is in memory
@@ -328,10 +337,9 @@ def sortDatabase(conn, cursor):
 
 
 def searchDatabase(column, query):
-    if column == 'publishYear': # Therefore with binary search
+    if column == 'publishYear': # So searching with binary search
         sortDatabase(conn, cursor) # Makes sure the database is sorted before doing binary search
-        print("Binary search started")
-        publications = loadPublications(conn, cursor, "SELECT * FROM Publications;")
+        publications = loadPublications(conn, cursor)
         results = []
         found, resulti = binarySearch(publications, query)
         while found:
@@ -341,8 +349,14 @@ def searchDatabase(column, query):
             found, resulti = binarySearch(publications, query)
         if len(results) <= 0: return False
         else: return results
+    # Searching with SQL Instead
     sql = f'SELECT * FROM Publications WHERE {column} = "{query}" COLLATE NOCASE;'
-    results = loadPublications(conn, cursor, sql)
+    try:
+        cursor.execute(sql)
+        data = cursor.fetchall()
+    except:
+        return False
+    results = parseDatabaseRows(data)
     if len(results) <= 0: return False
     else: return results
 
@@ -397,7 +411,7 @@ def main():
         case '1':
             sortDatabase(conn, cursor)
             print("Sorted database")
-            publications = loadPublications(conn, cursor, "SELECT * FROM Publications;")
+            publications = loadPublications(conn, cursor)
             outputPublications(publications)
             main()
         case '2':
