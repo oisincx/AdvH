@@ -122,9 +122,9 @@ def binarySearch(publications, query): # Descending order
     return found, middle
 
 
-def validateCredentials(username, password, conn, cursor):
+def validateCredentials(admin, conn, cursor):
     try:
-        cursor.execute(f"SELECT * FROM Administrators WHERE username = '{username}' COLLATE NOCASE AND password = '{hash(password, passwordSalt)}';")
+        cursor.execute(f"SELECT * FROM Administrators WHERE username = '{admin.getUsername()}' COLLATE NOCASE AND password = '{hash(admin.getPassword(), passwordSalt)}';")
         return not (len(cursor.fetchall()) == 0)
     except:
         print("Database lookup failed!")
@@ -144,7 +144,7 @@ def newAdminOnboard(conn, cursor):
 
 
 def publicationWizard(): # Ideally this should be able to parse pre made APA citations but like whatevs
-    print("-----------------------") 
+    print("-----------------------")
     print("Publication Wizard!")
     authorString = input("Please enter the APA formatted author list: ")
     publishDate = input("Please enter the year this publication was published: ")
@@ -154,7 +154,7 @@ def publicationWizard(): # Ideally this should be able to parse pre made APA cit
         try:
             doiURL = input("Please enter the DOI of the publication, including https:// : ")
             doiURL = doiURL.lower()
-            if not (doiURL.startswith("https://")) or len(doiURL) > 70:
+            if not (doiURL.startswith("https://")):
                 raise ValueError
             break
         except ValueError:
@@ -366,7 +366,8 @@ def main():
         case '2':
             username = input("What is your username?: ")
             password = input("What is your password?: ")
-            if validateCredentials(username, password, conn, cursor):
+            potentialAdmin = Administrator(username, password)
+            if validateCredentials(potentialAdmin, conn, cursor):
                 loggedIn = Administrator(username, password)
                 adminPanel(loggedIn)
             else:
