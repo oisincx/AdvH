@@ -298,7 +298,7 @@ def parseDatabaseRows(data):
         publications.append(entry)
     return publications
 
-def loadPublications(conn, cursor):
+def loadAllPublications(conn, cursor):
     publications = []
     try:
         cursor.execute("SELECT * FROM Publications;")
@@ -327,7 +327,7 @@ def outputPublications(publications):
 
 
 def sortDatabase(conn, cursor):
-    publications = loadPublications(conn, cursor)
+    publications = loadAllPublications(conn, cursor)
     publications = dateInsertionSort(publications)
     print("DO NOT TERMINATE PROGRAM")
     # Gets a bit dangerous here as the only copy of the database is in memory
@@ -339,7 +339,7 @@ def sortDatabase(conn, cursor):
 def searchDatabase(column, query):
     if column == 'publishYear': # So searching with binary search
         sortDatabase(conn, cursor) # Makes sure the database is sorted before doing binary search
-        publications = loadPublications(conn, cursor)
+        publications = loadAllPublications(conn, cursor)
         results = []
         found, resulti = binarySearch(publications, query)
         while found:
@@ -411,7 +411,7 @@ def main():
         case '1':
             sortDatabase(conn, cursor)
             print("Sorted database")
-            publications = loadPublications(conn, cursor)
+            publications = loadAllPublications(conn, cursor)
             outputPublications(publications)
             main()
         case '2':
