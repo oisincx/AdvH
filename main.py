@@ -1,6 +1,7 @@
 import sqlite3, hashlib, os
 passwordSalt = '5lo' # Arbritary but hopefully vaguely unqiue! Means pre computed hases are kaput
 
+
 def connectDB(database):
     try:
         conn = sqlite3.connect(database)
@@ -105,7 +106,6 @@ def dateInsertionSort(publications): # Descending order
     return publications
 
 
-
 def binarySearch(publications, query): # Descending order
     found = False
     middle = -1
@@ -129,6 +129,7 @@ def validateCredentials(admin, conn, cursor):
     except:
         print("Database lookup failed!")
         return False
+
 
 def validateInput(dataType, value):
     dataType = str(dataType).lower()
@@ -184,6 +185,7 @@ def getValidatedCLIInput(dataType, prompt):
             return validateInput(dataType, user_input)
         except ValueError as e:
             print(e)
+
 
 def newAdminOnboard(conn, cursor):
     print("-----------------------")
@@ -298,19 +300,23 @@ def loadPublications(conn, cursor, query):
         print("Failed to perform database lookup!")
     return publications
 
+
 def insertPublications(conn, cursor, publications):
     for publication in publications:
         insertPublication(conn, cursor, publication)
 
+
 def dropPublications(conn, cursor):
     cursor.execute("DROP TABLE Publications;")
     conn.commit()
+
 
 def outputPublications(publications):
     print("-----------------------")
     for index, publication in enumerate(publications): # Fancy python for each loop that lets me keep an index
         print(f"{index+1}. {publication.generateCitation()}")
         print("-----------------------")
+
 
 def sortDatabase(conn, cursor):
     publications = loadPublications(conn, cursor, "SELECT * FROM Publications;")
@@ -414,6 +420,7 @@ def main():
         case _:
             print("Invalid input!")
             main()
+
 
 # Kick everything off!
 database = 'database.db'
