@@ -13,8 +13,8 @@ def connectDB(database):
 
 def makeTables(conn, cursor):
     queries = [
-        "CREATE TABLE IF NOT EXISTS Publications(authorString VARCHAR(255) NOT NULL, publishDate YEAR NOT NULL, sourceTitle VARCHAR(255) NOT NULL, journalString VARCHAR(100) NOT NULL, doiURL VARCHAR(70) NOT NULL PRIMARY KEY, pathToPDF VARCHAR(255));",
-        "CREATE TABLE IF NOT EXISTS Administrators(username VARCHAR(255) NOT NULL PRIMARY KEY, password VARCHAR(64) NOT NULL);"
+        "CREATE TABLE IF NOT EXISTS Publications(authorString VARCHAR(255) NOT NULL, publishYear YEAR NOT NULL, sourceTitle VARCHAR(255) NOT NULL, journalString VARCHAR(100) NOT NULL, doiURL VARCHAR(70) NOT NULL PRIMARY KEY, pathToPDF VARCHAR(255));",
+        "CREATE TABLE IF NOT EXISTS Administrators(username VARCHAR(255) NOT NULL PRIMARY KEY, password VARCHAR(256) NOT NULL);"
         ]
     for query in queries:
         try:
@@ -26,20 +26,20 @@ def makeTables(conn, cursor):
 
 
 class Publication:
-    def __init__(self, authorString, publishDate, sourceTitle, journalString, doiURL, pathToPDF):
+    def __init__(self, authorString, publishYear, sourceTitle, journalString, doiURL, pathToPDF):
         self._authorString = authorString
-        self._publishDate = publishDate
+        self._publishYear = publishYear
         self._sourceTitle = sourceTitle
         self._journalString = journalString
         self._doiURL = doiURL
         self._pathToPDF = pathToPDF
     def generateCitation(self):
-        return f"{self.getAuthorString()} ({self.getPublishDate()}) {self.getSourceTitle()}. {self.getJournalString()}, {self.getDoiURL()}"
+        return f"{self.getAuthorString()} ({self.getpublishYear()}) {self.getSourceTitle()}. {self.getJournalString()}, {self.getDoiURL()}"
     #Getters
     def getAuthorString(self):
         return self._authorString
-    def getPublishDate(self):
-        return int(self._publishDate)
+    def getpublishYear(self):
+        return int(self._publishYear)
     def getSourceTitle(self):
         return self._sourceTitle
     def getJournalString(self):
@@ -51,8 +51,8 @@ class Publication:
     #Setters
     def setAuthorString(self, authorString):
         self._authorString = authorString
-    def setPublishDate(self, publishDate):
-        self._publishDate = publishDate
+    def setpublishYear(self, publishYear):
+        self._publishYear = publishYear
     def setSourceTitle(self, sourceTitle):
         self._sourceTitle = sourceTitle
     def setPublisherString(self, publisherString):
@@ -96,7 +96,7 @@ def dateInsertionSort(publications): # Descending order
         current = publications[index]
         position = index
 
-        while position > 0 and publications[position - 1].getPublishDate() < current.getPublishDate():
+        while position > 0 and publications[position - 1].getpublishYear() < current.getpublishYear():
             publications[position] = publications[position - 1]
             position -= 1
 
@@ -113,9 +113,9 @@ def binarySearch(publications, query): # Descending order
     end = len(publications)-1
     while (found == False) and (start <= end):
         middle = ((start+end) // 2)
-        if publications[middle].getPublishDate() == query:
+        if publications[middle].getpublishYear() == query:
             found = True
-        elif publications[middle].getPublishDate() > query:
+        elif publications[middle].getpublishYear() > query:
             start = middle + 1
         else:
             end = middle -1
@@ -130,12 +130,66 @@ def validateCredentials(admin, conn, cursor):
         print("Database lookup failed!")
         return False
 
+def validateInput(dataType, value):
+    dataType = str(dataType).lower()
+
+    match dataType:
+        case 'authorstring':
+            if len(value) > 255 or len(value) <= 0:
+                raise ValueError("The authorString cannot be longer than 255 characters or empty!")
+            return value
+
+        case 'publishyear':
+            if len(value) > 4 or len(value) <= 0 or not value.isdigit():
+                raise ValueError("The publishYear cannot be longer than 4 characters, non-numeric or empty!")
+            return int(value)
+
+        case 'sourcetitle':
+            if len(value) > 255 or len(value) <= 0:
+                raise ValueError("The publication title cannot be longer than 255 characters or empty!")
+            return value
+
+        case 'journalstring':
+            if len(value) > 100 or len(value) <= 0:
+                raise ValueError("journalString cannot be longer than 100 characters or empty!")
+            return value
+
+        case 'doiurl':
+            value = value.lower()
+            if not value.startswith("https://") or len(value) > 70 or len(value) <= 0:
+                raise ValueError("DOI must start with 'https://' and be <= 70 characters and cannot be empty")
+            return value
+
+        case 'pdf':
+            value = value.lower()
+            if len(value) > 255 or len(value) <= 0:
+                raise ValueError("PDF Path cannot be longer than 255 characters or empty!")
+            return value
+
+        case 'username':
+            if len(value) > 255 or len(value) <= 0:
+                raise ValueError("Your username cannot be longer than 255 characters or empty!")
+            return value
+
+        case 'password':
+            if len(value) > 256 or len(value) <= 0:
+                raise ValueError("Your password cannot be longer than 256 characters or empty!")
+            return value
+
+
+def getValidatedCLIInput(dataType, prompt):
+    while True:
+        user_input = input(prompt)
+        try:
+            return validateInput(dataType, user_input)
+        except ValueError as e:
+            print(e)
 
 def newAdminOnboard(conn, cursor):
     print("-----------------------")
     print("Administrator Management")
-    username = input("What will the new admin's username be?: ")
-    password = input("What will the new admin's password be?: ")
+    username = getValidatedCLIInput('username', "What will the new admin's username be?: ")
+    password = getValidatedCLIInput('password', "What will the new admin's password be?: ")
     admin = Administrator(username, password)
     if createAdmin(conn, cursor, admin):
         print(f"Succesfully created admin with username {username}!")
@@ -146,42 +200,25 @@ def newAdminOnboard(conn, cursor):
 def publicationWizard(): # Ideally this should be able to parse pre made APA citations but like whatevs
     print("-----------------------")
     print("Publication Wizard!")
-    authorString = input("Please enter the APA formatted author list: ")
-    publishDate = input("Please enter the year this publication was published: ")
-    sourceTitle = input("Please enter the title of the publication: ")
-    journalString = input("Please enter the name of the Journal: ")
-    while True:
-        try:
-            doiURL = input("Please enter the DOI of the publication, including https:// : ")
-            doiURL = doiURL.lower()
-            if not (doiURL.startswith("https://")):
-                raise ValueError
-            break
-        except ValueError:
-            print("DOI must start with 'https://'")
-    PDF = input("Please enter the path to the PDF relative to the current working directory: ")
-    publication = Publication(authorString, publishDate, sourceTitle, journalString, doiURL, PDF)
+    authorString = getValidatedCLIInput("authorstring", "Please enter the APA formatted author list: ")
+    publishYear = getValidatedCLIInput("publishYear", "Please enter the year this publication was published: ")
+    sourceTitle = getValidatedCLIInput("sourcetitle", "Please enter the title of the publication: ")
+    journalString = getValidatedCLIInput("journalstring", "Please enter the name of the Journal: ")
+    doiURL = getValidatedCLIInput("doiurl", "Please enter the DOI of the publication, including https:// : ")
+    PDF = getValidatedCLIInput("pdf", "Please enter the path to the PDF relative to the current working directory: ")
+    publication = Publication(authorString, publishYear, sourceTitle, journalString, doiURL, PDF)
     return publication
 
 
 def insertPublication(conn, cursor, publication):
-    values = f'"{publication.getAuthorString()}", "{publication.getPublishDate()}", "{publication.getSourceTitle()}", "{publication.getJournalString()}", "{publication.getDoiURL()}", "{publication.getPathToPDF()}"'
+    values = f'"{publication.getAuthorString()}", "{publication.getpublishYear()}", "{publication.getSourceTitle()}", "{publication.getJournalString()}", "{publication.getDoiURL()}", "{publication.getPathToPDF()}"'
     query = f"INSERT INTO Publications VALUES ({values});"
     cursor.execute(query)
     conn.commit()
 
 
 def deletePublicationWizard():
-    print("Please enter the full DOI URL of the publication you want to delete.")
-    while True:
-        try:
-            doi = input("\n#")
-            doi = doi.lower()
-            if not (doi.startswith("https://")) or len(doi) > 70:
-                raise ValueError
-            break
-        except ValueError:
-            print("DOI must start with 'https://' and be less than or equal to 70 characters.")
+    doi = getValidatedCLIInput('doiurl', "Please enter the full DOI URL of the publication you want to delete.")
     return doi
 
 
@@ -319,24 +356,19 @@ def databaseSearchWizard():
     match choice:
         case '1':
             column = 'authorString'
-            query = input("\n#")
+            query = getValidatedCLIInput(column, "\n#")
         case '2':
             column = 'publishYear'
-            while True:
-                try:
-                    query = int(input("\n#"))
-                    break
-                except ValueError:
-                    print("Input must be an integer!")
+            query = getValidatedCLIInput(column, "\n#")
         case '3':
             column = 'sourceTitle'
-            query = input("\n#") 
+            query = getValidatedCLIInput(column, "\n#")
         case '4':
             column = 'journalString'
-            query = input("\n#")
+            query = getValidatedCLIInput(column, "\n#")
         case '5':
             column = 'doiURL'
-            query = input("\n#")
+            query = getValidatedCLIInput(column, "\n#")
         case _:
             print("Please enter a valid column!")
             databaseSearchWizard()
@@ -364,8 +396,8 @@ def main():
             outputPublications(publications)
             main()
         case '2':
-            username = input("What is your username?: ")
-            password = input("What is your password?: ")
+            username = getValidatedCLIInput('username', "What is your username?: ")
+            password = getValidatedCLIInput('password', "What is your password?: ")
             potentialAdmin = Administrator(username, password)
             if validateCredentials(potentialAdmin, conn, cursor):
                 loggedIn = Administrator(username, password)
