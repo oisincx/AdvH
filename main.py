@@ -35,11 +35,11 @@ class Publication:
         self._doiURL = doiURL
         self._pathToPDF = pathToPDF
     def generateCitation(self):
-        return f"{self.getAuthorString()} ({self.getpublishYear()}) {self.getSourceTitle()}. {self.getJournalString()}, {self.getDoiURL()}"
+        return f"{self.getAuthorString()} ({self.getPublishYear()}) {self.getSourceTitle()}. {self.getJournalString()}, {self.getDoiURL()}"
     #Getters
     def getAuthorString(self):
         return self._authorString
-    def getpublishYear(self):
+    def getPublishYear(self):
         return int(self._publishYear)
     def getSourceTitle(self):
         return self._sourceTitle
@@ -52,7 +52,7 @@ class Publication:
     #Setters
     def setAuthorString(self, authorString):
         self._authorString = authorString
-    def setpublishYear(self, publishYear):
+    def setPublishYear(self, publishYear):
         self._publishYear = publishYear
     def setSourceTitle(self, sourceTitle):
         self._sourceTitle = sourceTitle
@@ -97,7 +97,7 @@ def dateInsertionSort(publications): # Descending order
         current = publications[index]
         position = index
 
-        while position > 0 and publications[position - 1].getpublishYear() < current.getpublishYear():
+        while position > 0 and publications[position - 1].getPublishYear() < current.getPublishYear():
             publications[position] = publications[position - 1]
             position -= 1
 
@@ -113,9 +113,9 @@ def binarySearch(publications, query): # Descending order
     end = len(publications)-1
     while (found == False) and (start <= end):
         middle = ((start+end) // 2)
-        if publications[middle].getpublishYear() == query:
+        if publications[middle].getPublishYear() == query:
             found = True
-        elif publications[middle].getpublishYear() > query:
+        elif publications[middle].getPublishYear() > query:
             start = middle + 1
         else:
             end = middle -1
@@ -212,7 +212,7 @@ def publicationWizard(): # Ideally this should be able to parse pre made APA cit
 
 
 def insertPublication(conn, cursor, publication):
-    values = f'"{publication.getAuthorString()}", "{publication.getpublishYear()}", "{publication.getSourceTitle()}", "{publication.getJournalString()}", "{publication.getDoiURL()}", "{publication.getPathToPDF()}"'
+    values = f'"{publication.getAuthorString()}", "{publication.getPublishYear()}", "{publication.getSourceTitle()}", "{publication.getJournalString()}", "{publication.getDoiURL()}", "{publication.getPathToPDF()}"'
     query = f"INSERT INTO Publications VALUES ({values});"
     cursor.execute(query)
     conn.commit()
