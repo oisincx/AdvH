@@ -35,7 +35,7 @@ class Publication:
         self._doiURL = doiURL
         self._pathToPDF = pathToPDF
     def generateCitation(self):
-        return f"{self.getAuthorString()} ({self.getPublishYear()}) {self.getSourceTitle()}. {self.getJournalString()}, {self.getDoiURL()}"
+        return f"{self.getAuthorString()} ({self.getPublishYear()}). {self.getSourceTitle()}. {self.getJournalString()}. {self.getDoiURL()}"
     #Getters
     def getAuthorString(self):
         return self._authorString
