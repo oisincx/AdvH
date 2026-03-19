@@ -84,7 +84,9 @@ def hash(password, salt):
 
 def createAdmin(conn, cursor, admin):
     try:
-        cursor.execute(f"INSERT INTO Administrators VALUES ( '{admin.getUsername()}' , '{ hash(admin.getPassword(), passwordSalt) }');")
+        username = admin.getUsername()
+        hashedPassword = hash(admin.getPassword(), passwordSalt)
+        cursor.execute("INSERT INTO Administrators VALUES (? , ?);", (username, hashedPassword))
         conn.commit()
     except Exception as e:
         print("Database query failed!", e)
@@ -124,7 +126,9 @@ def binarySearch(publications, query): # Descending order
 
 def validateCredentials(admin, conn, cursor):
     try:
-        cursor.execute(f"SELECT * FROM Administrators WHERE username = '{admin.getUsername()}' COLLATE NOCASE AND password = '{hash(admin.getPassword(), passwordSalt)}';")
+        username = admin.getUsername()
+        hashedPassword = hash(admin.getPassword(), passwordSalt)
+        cursor.execute("SELECT * FROM Administrators WHERE username = ? COLLATE NOCASE AND password = ?;", (username, hashedPassword))
         return not (len(cursor.fetchall()) == 0)
     except:
         print("Database lookup failed!")
@@ -212,10 +216,15 @@ def publicationWizard(): # Ideally this should be able to parse pre made APA cit
 
 
 def insertPublication(conn, cursor, publication):
-    values = f'"{publication.getAuthorString()}", "{publication.getPublishYear()}", "{publication.getSourceTitle()}", "{publication.getJournalString()}", "{publication.getDoiURL()}", "{publication.getPathToPDF()}"'
-    query = f"INSERT INTO Publications VALUES ({values});"
-    cursor.execute(query)
-    conn.commit()
+    query = "INSERT INTO Publications VALUES (?,?,?,?,?,?);"
+    try:
+        cursor.execute(query, (publication.getAuthorString(), publication.getPublishYear(), publication.getSourceTitle(), publication.getJournalString(), publication.getDoiURL(), publication.getPathToPDF()))
+        conn.commit()
+        return True
+    except:
+        print("Database insertion failed!")
+        return False
+
 
 
 def deletePublicationWizard():
@@ -224,9 +233,9 @@ def deletePublicationWizard():
 
 
 def deletePublication(conn, cursor, doi):
-    sql = f"DELETE FROM Publications WHERE doiURL = '{doi}';"
+    sql = "DELETE FROM Publications WHERE doiURL = ?;"
     try:
-        cursor.execute(sql)
+        cursor.execute(sql, (doi,)) # Trailing comma is necessary, otherwise python doesn't treat as a tuple and thus sqlite treats it wrong
     except:
         print("Failed to execute query!")
         return False
@@ -350,9 +359,9 @@ def searchDatabase(column, query):
         if len(results) <= 0: return False
         else: return results
     # Searching with SQL Instead
-    sql = f'SELECT * FROM Publications WHERE {column} = "{query}" COLLATE NOCASE;'
+    sql = f'SELECT * FROM Publications WHERE {column} = ? COLLATE NOCASE;'
     try:
-        cursor.execute(sql)
+        cursor.execute(sql, (query,)) # Trailing comma is necessary, otherwise python doesn't treat as a tuple and thus sqlite treats it wrong
         data = cursor.fetchall()
     except:
         return False
