@@ -145,8 +145,8 @@ def validateInput(dataType, value):
             return value
 
         case 'publishyear':
-            if len(value) > 4 or len(value) <= 0 or not value.isdigit():
-                raise ValueError("The publishYear cannot be longer than 4 characters, non-numeric or empty!")
+            if (not len(value) == 4) or not value.isdigit():
+                raise ValueError("The publishYear must be exactly 4 characters and cannot be non-numeric!")
             return int(value)
 
         case 'sourcetitle':
@@ -297,7 +297,7 @@ def loadData(path, conn, cursor): # This is just a helper function to help load 
 
 
 def parseDatabaseRow(row):
-    return Publication(row[0], row[1], row[2], row[3], row[4], row[5])
+    return Publication(*row) # this is so cold
 
 
 def parseDatabaseRows(data):
