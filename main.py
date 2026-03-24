@@ -1,10 +1,12 @@
 import sqlite3, hashlib, os
-passwordSalt = '5lo' # Arbritary but hopefully vaguely unqiue! Means pre computed hases are kaput
+passwordSalt = '5lo' # Arbritary but hopefully vaguely unqiue! It means pre computed hases are kaput
 
 
 def connectDB(database):
     try:
         conn = sqlite3.connect(database)
+        conn.execute("PRAGMA foreign_keys = 1") # why this isn't the default is beyond me, enabling foreign keys.
+        conn.commit()
         cursor = conn.cursor()
         return conn, cursor
     except:
@@ -14,31 +16,77 @@ def connectDB(database):
 
 def makeTables(conn, cursor):
     queries = [
-        "CREATE TABLE IF NOT EXISTS Publications(authorString VARCHAR(255) NOT NULL, publishYear YEAR NOT NULL, sourceTitle VARCHAR(255) NOT NULL, journalString VARCHAR(100) NOT NULL, doiURL VARCHAR(70) NOT NULL PRIMARY KEY, pathToPDF VARCHAR(255));",
+        "CREATE TABLE IF NOT EXISTS Publications(publishYear YEAR NOT NULL, sourceTitle VARCHAR(255) NOT NULL, journalString VARCHAR(100) NOT NULL, doiURL VARCHAR(100) NOT NULL PRIMARY KEY, pathToPDF VARCHAR(255), pageNumbers VARCHAR(50), volume VARCHAR(20), issue VARCHAR(20) );",
+        "CREATE TABLE IF NOT EXISTS Authors(authorID INTEGER PRIMARY KEY AUTOINCREMENT, fullName VARCHAR(255))",
+        "CREATE TABLE IF NOT EXISTS publicationAuthors (doiURL VARCHAR(100) NOT NULL, authorID INTEGER NOT NULL, authorOrder INTEGER NOT NULL, PRIMARY KEY(doiURL, authorID), UNIQUE(doiURL, authorOrder), FOREIGN KEY (doiURL) REFERENCES Publications(doiURL) ON DELETE CASCADE, FOREIGN KEY (authorID) REFERENCES Authors(authorID) ON DELETE CASCADE)",
         "CREATE TABLE IF NOT EXISTS Administrators(username VARCHAR(255) NOT NULL PRIMARY KEY, password VARCHAR(256) NOT NULL);"
-        ]
+    ]
     for query in queries:
         try:
             cursor.execute(query)
-        except:
-            print("Failed to create tables")
+        except Exception as e:
+            print(f"Failed to create tables, Error: {e}")
             quit()
     conn.commit()
 
 
 class Publication:
-    def __init__(self, authorString, publishYear, sourceTitle, journalString, doiURL, pathToPDF):
-        self._authorString = authorString
+    def __init__(self, authors, publishYear, sourceTitle, journalString, doiURL, pathToPDF, pageNumbers, volume, issue):
+        self._authors = authors
         self._publishYear = publishYear
         self._sourceTitle = sourceTitle
         self._journalString = journalString
         self._doiURL = doiURL
         self._pathToPDF = pathToPDF
+        self._pageNumbers = pageNumbers
+        self._volume = volume
+        self._issue = issue
     def generateCitation(self):
-        return f"{self.getAuthorString()} ({self.getPublishYear()}). {self.getSourceTitle()}. {self.getJournalString()}. {self.getDoiURL()}"
+        authors = self.getAuthorString()
+        year = self.getPublishYear()
+        title = self.getSourceTitle()
+        journal = self.getJournalString()
+        volume = self.getVolume()
+        issue = self.getIssue()
+        pages = self.getPageNumbers()
+        doi = self.getDoiURL()
+
+        citation = f"{authors} ({year}). {title}. {journal}"
+
+        # Only add volume, issue, and pages if they exist
+        if volume:
+            citation += f", {volume}"
+            if issue:
+                citation += f"({issue})"
+        if pages:
+            citation += f", {pages}"
+
+        citation += f". {doi}"
+
+        return citation
     #Getters
     def getAuthorString(self):
-        return self._authorString
+        if not self._authors:
+            return ""
+
+        if len(self._authors) == 1:
+            return self._authors[0]
+
+        if len(self._authors) == 2:
+            return self._authors[0] + " & " + self._authors[1]
+
+        # Three or more authors
+        authorString = ""
+        for i in range(len(self._authors)):
+            if i == len(self._authors) - 1:
+                # Last author
+                authorString += "& " + self._authors[i]
+            else:
+                # Not last author
+                authorString += self._authors[i] + ", "
+        return authorString
+    def getAuthors(self):
+        return self._authors
     def getPublishYear(self):
         return int(self._publishYear)
     def getSourceTitle(self):
@@ -49,19 +97,31 @@ class Publication:
         return self._doiURL
     def getPathToPDF(self):
         return self._pathToPDF
+    def getPageNumbers(self):
+        return self._pageNumbers
+    def getVolume(self):
+        return self._volume
+    def getIssue(self):
+        return self._issue
     #Setters
-    def setAuthorString(self, authorString):
-        self._authorString = authorString
+    def setAuthors(self, authors):
+        self._authors = authors
     def setPublishYear(self, publishYear):
         self._publishYear = publishYear
     def setSourceTitle(self, sourceTitle):
         self._sourceTitle = sourceTitle
-    def setPublisherString(self, publisherString):
-        self._publisherString = publisherString
+    def setJournalString(self, journalString):
+        self._journalString = journalString
     def setDoiURL(self, doiURL):
         self._doiURL = doiURL
     def setPathToPDF(self, pathToPDF):
         self._pathToPDF = pathToPDF
+    def setPageNumbers(self, pageNumbers):
+        self._pageNumbers = pageNumbers
+    def setVolume(self, volume):
+        self._volume = volume
+    def setIssue(self, issue):
+        self._issue = issue
 
 
 class Administrator:
@@ -94,6 +154,29 @@ def createAdmin(conn, cursor, admin):
     return True
 
 
+def newAdminOnboard(conn, cursor):
+    print("-----------------------")
+    print("Administrator Management")
+    username = getValidatedCLIInput('username', "What will the new admin's username be?: ")
+    password = getValidatedCLIInput('password', "What will the new admin's password be?: ")
+    admin = Administrator(username, password)
+    if createAdmin(conn, cursor, admin):
+        print(f"Succesfully created admin with username {username}!")
+    else:
+        print("Failed to create admin!")
+
+
+def validateCredentials(admin, conn, cursor):
+    try:
+        username = admin.getUsername()
+        hashedPassword = hash(admin.getPassword(), passwordSalt)
+        cursor.execute("SELECT * FROM Administrators WHERE username = ? COLLATE NOCASE AND password = ?;", (username, hashedPassword))
+        return not (len(cursor.fetchall()) == 0)
+    except:
+        print("Database lookup failed!")
+        return False
+
+
 def dateInsertionSort(publications): # Descending order
     for index in range(1, len(publications)):
         current = publications[index]
@@ -124,25 +207,19 @@ def binarySearch(publications, query): # Descending order
     return found, middle
 
 
-def validateCredentials(admin, conn, cursor):
-    try:
-        username = admin.getUsername()
-        hashedPassword = hash(admin.getPassword(), passwordSalt)
-        cursor.execute("SELECT * FROM Administrators WHERE username = ? COLLATE NOCASE AND password = ?;", (username, hashedPassword))
-        return not (len(cursor.fetchall()) == 0)
-    except:
-        print("Database lookup failed!")
-        return False
-
-
 def validateInput(dataType, value):
     dataType = str(dataType).lower()
 
     match dataType:
-        case 'authorstring':
+        case 'authorsn':
+            if len(value) <= 0 or not value.isdigit():
+                raise ValueError("The number of authors cannot be empty or non integer!")
+            return int(value)
+     
+        case 'author':
             if len(value) > 255 or len(value) <= 0:
-                raise ValueError("The authorString cannot be longer than 255 characters or empty!")
-            return value
+                raise ValueError("The author's name cannot be longer than 255 characters or empty!")
+            return value.replace("’", "'") # there's two different apostrophes that citations like using, this makes sure that this doesn't end up with duplicated authors
 
         case 'publishyear':
             if (not len(value) == 4) or not value.isdigit():
@@ -161,13 +238,28 @@ def validateInput(dataType, value):
 
         case 'doiurl':
             value = value.lower()
-            if not value.startswith("https://") or len(value) > 70 or len(value) <= 0:
-                raise ValueError("DOI must start with 'https://' and be <= 70 characters and cannot be empty")
+            if not value.startswith("https://") or len(value) > 100 or len(value) <= 0:
+                raise ValueError("DOI must start with 'https://' and be <= 100 characters and cannot be empty")
             return value
 
         case 'pdf':
-            if len(value) > 255 or len(value) <= 0:
-                raise ValueError("PDF Path cannot be longer than 255 characters or empty!")
+            if len(value) > 255:
+                raise ValueError("PDF Path cannot be longer than 255 characters!")
+            return value
+        
+        case 'pagenumbers':
+            if len(value) > 50:
+                raise ValueError("Page numbers string cannot be longer than 50 characters")
+            return value
+
+        case 'volume':
+            if len(value) > 20:
+                raise ValueError("Volume string cannot be longer than 20 characters!")
+            return value
+
+        case 'issue':
+            if len(value) > 20:
+                raise ValueError("Issue string cannot be longer than 20 characters!")
             return value
 
         case 'username':
@@ -190,45 +282,65 @@ def getValidatedCLIInput(dataType, prompt):
             print(e)
 
 
-def newAdminOnboard(conn, cursor):
-    print("-----------------------")
-    print("Administrator Management")
-    username = getValidatedCLIInput('username', "What will the new admin's username be?: ")
-    password = getValidatedCLIInput('password', "What will the new admin's password be?: ")
-    admin = Administrator(username, password)
-    if createAdmin(conn, cursor, admin):
-        print(f"Succesfully created admin with username {username}!")
-    else:
-        print("Failed to create admin!")
-
-
 def publicationWizard(): # Ideally this should be able to parse pre made APA citations but like whatevs
     print("-----------------------")
     print("Publication Wizard!")
-    authorString = getValidatedCLIInput("authorstring", "Please enter the APA formatted author list: ")
+    authorsn = getValidatedCLIInput("authorsn", "Please enter how many authors were cited on this publication: ")
+    authors = []
+    for i in range(authorsn):
+        authors.append(getValidatedCLIInput("author", f"Please enter author #{i+1}'s APA formatted full name: "))
     publishYear = getValidatedCLIInput("publishYear", "Please enter the year this publication was published: ")
     sourceTitle = getValidatedCLIInput("sourcetitle", "Please enter the title of the publication: ")
     journalString = getValidatedCLIInput("journalstring", "Please enter the name of the Journal: ")
     doiURL = getValidatedCLIInput("doiurl", "Please enter the DOI of the publication, including https:// : ")
-    PDF = getValidatedCLIInput("pdf", "Please enter the path to the PDF relative to the current working directory: ")
-    publication = Publication(authorString, publishYear, sourceTitle, journalString, doiURL, PDF)
+    PDF = getValidatedCLIInput("pdf", "Please enter the path to the PDF relative to the current working directory, if not applicable then leave blank! : ")
+    pageNumbers = getValidatedCLIInput("pagenumbers", "Please enter the pages of the journal formatted like '22-26' or like 'Article 74', if not applicable then leave blank! : ")
+    volume = getValidatedCLIInput("volume", "Please enter the volume of the publication, if not applicable then leave blank! : ")
+    issue = getValidatedCLIInput("issue", "Please enter the issue of the publication, if not applicable then leave blank! : ")
+    publication = Publication(authors, publishYear, sourceTitle, journalString, doiURL, PDF, pageNumbers, volume, issue)
     return publication
 
 
 def insertPublication(conn, cursor, publication):
-    query = "INSERT INTO Publications VALUES (?,?,?,?,?,?);"
     try:
-        cursor.execute(query, (publication.getAuthorString(), publication.getPublishYear(), publication.getSourceTitle(), publication.getJournalString(), publication.getDoiURL(), publication.getPathToPDF()))
+        # Insert into Publications table
+        query = "INSERT INTO Publications VALUES (?,?,?,?,?,?,?,?);"
+        cursor.execute(query, (publication.getPublishYear(), publication.getSourceTitle(), publication.getJournalString(), publication.getDoiURL(), publication.getPathToPDF(), publication.getPageNumbers(), publication.getVolume(), publication.getIssue()))
+
+        # Insert authors and link them
+        authors = publication.getAuthors()
+
+        for i in range(len(authors)):
+            authorName = authors[i]
+
+            # Check if author already exists
+            cursor.execute("SELECT authorID FROM Authors WHERE fullName = ?;", (authorName,))
+            data = cursor.fetchone()
+
+            if data:
+                authorID = data[0]
+            else:
+                cursor.execute("INSERT INTO Authors (fullName) VALUES (?);", (authorName,))
+                authorID = cursor.lastrowid
+
+            # Link author to publication
+            cursor.execute("INSERT INTO PublicationAuthors (doiURL, authorID, authorOrder) VALUES (?, ?, ?);", (publication.getDoiURL(), authorID, i + 1))
+
         conn.commit()
         return True
+
     except:
         print("Database insertion failed!")
         return False
 
 
+def insertPublications(conn, cursor, publications):
+    for publication in publications:
+        insertPublication(conn, cursor, publication)
+
 
 def deletePublicationWizard():
-    doi = getValidatedCLIInput('doiurl', "Please enter the full DOI URL of the publication you want to delete.")
+    doi = getValidatedCLIInput('doiurl', "Please enter the DOI of the publication to be deleted, including https:// : ")
     return doi
 
 
@@ -263,7 +375,7 @@ def adminPanel(admin):
             doi = deletePublicationWizard()
             result = deletePublication(conn, cursor, doi)
             if result > 0:
-                print(f"Deleted {str(cursor.rowcount)} publications according to this query, if > 1 then duplicate entries existed.")
+                print(f"Deleted {str(result)} publications according to this query, if > 1 then duplicate entries existed.")
             else:
                 print("No publications matching that DOI were found!")
             adminPanel(admin)
@@ -277,33 +389,29 @@ def adminPanel(admin):
             adminPanel(admin)
 
 
-def loadData(path, conn, cursor): # This is just a helper function to help load in mock data for testing
-    f = open(path, 'r', encoding='utf-8')
-    data = f.readlines()
-    #data.pop(0) # pop the definition line because my parser assumes a specific order
-    for row in data:
-        row = row.rstrip('\n')
-        columns = row.split('|')
-        values = ""
-        for column in columns:
-            values += f'"{column}"' + ','
-        values = values[:-1] # pop that last comma
-        query = f"INSERT INTO Publications VALUES ({values});"
-        
-        print(query)
-        cursor.execute(query)
-        conn.commit()
-    f.close()
+def parseDatabaseRow(row, conn, cursor):
+    publishYear = row[0]
+    sourceTitle = row[1]
+    journalString = row[2]
+    doiURL = row[3]
+    pathToPDF = row[4]
+    pageNumbers = row[5]
+    volume = row[6]
+    issue = row[7]
+    sql = "SELECT Authors.fullName FROM Authors JOIN publicationAuthors ON Authors.authorID = publicationAuthors.authorID WHERE publicationAuthors.doiURL = ? ORDER BY publicationAuthors.authorOrder;"
+    # Get authors
+    cursor.execute(sql, (doiURL,))
+    authorData = cursor.fetchall()
+    authors = []
+    for authorRow in authorData:
+        authors.append(authorRow[0])
+    return Publication(authors, publishYear, sourceTitle, journalString, doiURL, pathToPDF, pageNumbers, volume, issue)
 
 
-def parseDatabaseRow(row):
-    return Publication(*row) # this is so cold
-
-
-def parseDatabaseRows(data):
+def parseDatabaseRows(data, conn, cursor):
     publications = []
     for row in data:
-        entry = parseDatabaseRow(row)
+        entry = parseDatabaseRow(row, conn, cursor)
         publications.append(entry)
     return publications
 
@@ -312,15 +420,10 @@ def loadAllPublications(conn, cursor):
     try:
         cursor.execute("SELECT * FROM Publications;")
         data = cursor.fetchall()
-        publications = parseDatabaseRows(data)
+        publications = parseDatabaseRows(data, conn, cursor)
     except:
         print("Failed to perform database lookup!")
     return publications
-
-
-def insertPublications(conn, cursor, publications):
-    for publication in publications:
-        insertPublication(conn, cursor, publication)
 
 
 def dropPublications(conn, cursor):
@@ -335,20 +438,10 @@ def outputPublications(publications):
         print("-----------------------")
 
 
-def sortDatabase(conn, cursor):
-    publications = loadAllPublications(conn, cursor)
-    publications = dateInsertionSort(publications)
-    print("DO NOT TERMINATE PROGRAM")
-    # Gets a bit dangerous here as the only copy of the database is in memory
-    dropPublications(conn, cursor)
-    makeTables(conn, cursor)
-    insertPublications(conn, cursor, publications)
-
-
 def searchDatabase(column, query):
     if column == 'publishYear': # So searching with binary search
-        sortDatabase(conn, cursor) # Makes sure the database is sorted before doing binary search
         publications = loadAllPublications(conn, cursor)
+        publications = dateInsertionSort(publications) # Sort the publications in memory
         results = []
         found, resulti = binarySearch(publications, query)
         while found:
@@ -358,14 +451,17 @@ def searchDatabase(column, query):
             found, resulti = binarySearch(publications, query)
         if len(results) <= 0: return False
         else: return results
-    # Searching with SQL Instead
-    sql = f'SELECT * FROM Publications WHERE {column} = ? COLLATE NOCASE;'
+    # Searching with SQL instead
+    if column == "Author":
+        sql = "SELECT Publications.* FROM Publications JOIN PublicationAuthors ON Publications.doiURL = PublicationAuthors.doiURL JOIN Authors ON PublicationAuthors.authorID = Authors.authorID WHERE Authors.fullName = ? COLLATE NOCASE ORDER BY Publications.publishYear;"
+    else:
+        sql = f'SELECT * FROM Publications WHERE {column} = ? COLLATE NOCASE;'
     try:
         cursor.execute(sql, (query,)) # Trailing comma is necessary, otherwise python doesn't treat as a tuple and thus sqlite treats it wrong
         data = cursor.fetchall()
     except:
         return False
-    results = parseDatabaseRows(data)
+    results = parseDatabaseRows(data, conn, cursor)
     if len(results) <= 0: return False
     else: return results
 
@@ -373,7 +469,7 @@ def searchDatabase(column, query):
 def databaseSearchWizard():
     print("-----------------------")
     print("Which column would you like to search the database by?")
-    print("1. authorString")
+    print("1. Author")
     print("2. publishYear (Fast Search!)")
     print("3. sourceTitle")
     print("4. Journal")
@@ -383,7 +479,7 @@ def databaseSearchWizard():
     column = ""
     match choice:
         case '1':
-            column = 'authorString'
+            column = 'Author'
             query = getValidatedCLIInput(column, "\n#")
         case '2':
             column = 'publishYear'
@@ -418,10 +514,9 @@ def main():
     choice = input("\n#")
     match choice:
         case '1':
-            sortDatabase(conn, cursor)
             print("Sorted database")
             publications = loadAllPublications(conn, cursor)
-            outputPublications(publications)
+            outputPublications(dateInsertionSort(publications))
             main()
         case '2':
             username = getValidatedCLIInput('username', "What is your username?: ")
@@ -458,5 +553,4 @@ if firstRun:
     print("It appears this is your first time running the program, Please make an Administrator account!")
     newAdminOnboard(conn, cursor)
 #loadData('2025.csv', conn, cursor)
-sortDatabase(conn, cursor)
 main()
